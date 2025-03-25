@@ -477,7 +477,7 @@ class FrechetAudioDistance:
         eval_paths=None,
         background_embds_path=None,
         eval_embds_path=None,
-        normalize_volume=False,
+        normalize_rms_per_example=False,
         dtype="float32",
     ):
         """
@@ -516,7 +516,7 @@ class FrechetAudioDistance:
                         paths=background_paths, dtype=dtype
                     )
 
-                if normalize_volume:
+                if normalize_rms_per_example:
                     background_rms = [np.sqrt(np.mean(x**2)) for x in audio_background]
                 # print(audio_background[0].shape)
 
@@ -540,7 +540,7 @@ class FrechetAudioDistance:
                 else:
                     audio_eval = self.__load_audio_files(paths=eval_paths, dtype=dtype)
 
-                if normalize_volume:
+                if normalize_rms_per_example:
                     eval_rms = [np.sqrt(np.mean(x**2)) for x in audio_eval]
                     audio_eval = [
                         (background_rms[i] / (eval_rms[i] + 1e-8)) * audio_eval[i]
