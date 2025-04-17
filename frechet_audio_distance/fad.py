@@ -11,7 +11,7 @@ import numpy as np
 import resampy
 import soundfile as sf
 import torch
-import laion_clap
+# import laion_clap
 
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import Pool
