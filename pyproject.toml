@@ -30,7 +30,6 @@ dependencies = [
   'torchaudio',
   'encodec',
   'torchvision',
-  'audiotools @ git+https://github.com/descriptinc/audiotools.git',
 ]
 
 [project.urls]
