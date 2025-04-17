@@ -11,3 +11,6 @@ laion_clap
 transformers<=4.30.2
 torchaudio
 encodec
+
+# Audiotools, for loudness measurement
+audiotools @ git+https://github.com/descriptinc/audiotools.git

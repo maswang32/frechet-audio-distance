@@ -14,6 +14,7 @@ import torch
 import laion_clap
 
 from multiprocessing.dummy import Pool as ThreadPool
+from multiprocessing import Pool
 from scipy import linalg
 from torch import nn
 from tqdm import tqdm
@@ -22,6 +23,7 @@ from .models.pann import Cnn14, Cnn14_8k, Cnn14_16k
 from .utils import load_audio_task
 
 from encodec import EncodecModel
+from audiotools.core.loudness import Meter
 
 
 class FrechetAudioDistance:
@@ -51,15 +53,20 @@ class FrechetAudioDistance:
         -- use_activation: whether to use the output activation in vggish
         -- enable_fusion: whether to use fusion for clap models (valid depending on the specific submodel used)
         """
-        assert model_name in ["vggish", "pann", "clap", "encodec"], (
-            "model_name must be either 'vggish', 'pann', 'clap' or 'encodec'"
-        )
+        assert model_name in [
+            "vggish",
+            "pann",
+            "clap",
+            "encodec",
+        ], "model_name must be either 'vggish', 'pann', 'clap' or 'encodec'"
         if model_name == "vggish":
             assert sample_rate == 16000, "sample_rate must be 16000"
         elif model_name == "pann":
-            assert sample_rate in [8000, 16000, 32000], (
-                "sample_rate must be 8000, 16000 or 32000"
-            )
+            assert sample_rate in [
+                8000,
+                16000,
+                32000,
+            ], "sample_rate must be 8000, 16000 or 32000"
         elif model_name == "clap":
             assert sample_rate == 48000, "sample_rate must be 48000"
             assert submodel_name in [
@@ -70,9 +77,14 @@ class FrechetAudioDistance:
                 "music_speech_audioset",
             ]
         elif model_name == "encodec":
-            assert sample_rate in [24000, 48000], "sample_rate must be 24000 or 48000"
+            assert sample_rate in [
+                24000,
+                48000,
+            ], "sample_rate must be 24000 or 48000"
             if sample_rate == 48000:
-                assert channels == 2, "channels must be 2 for 48khz encodec model"
+                assert (
+                    channels == 2
+                ), "channels must be 2 for 48khz encodec model"
         self.model_name = model_name
         self.submodel_name = submodel_name
         self.sample_rate = sample_rate
@@ -81,9 +93,11 @@ class FrechetAudioDistance:
         self.device = (
             torch.device("cuda")
             if torch.cuda.is_available()
-            else torch.device("mps")
-            if torch.backends.mps.is_available()
-            else torch.device("cpu")
+            else (
+                torch.device("mps")
+                if torch.backends.mps.is_available()
+                else torch.device("cpu")
+            )
         )
         if self.device == torch.device("mps") and self.model_name == "clap":
             if self.verbose:
@@ -96,7 +110,9 @@ class FrechetAudioDistance:
                 print("[Frechet Audio Distance] Using CPU device instead.")
             self.device = torch.device("cpu")
         if self.verbose:
-            print("[Frechet Audio Distance] Using device: {}".format(self.device))
+            print(
+                "[Frechet Audio Distance] Using device: {}".format(self.device)
+            )
         self.audio_load_worker = audio_load_worker
         self.enable_fusion = enable_fusion
         if ckpt_dir is not None:
@@ -107,10 +123,14 @@ class FrechetAudioDistance:
             # by default `ckpt_dir` is `torch.hub.get_dir()`
             self.ckpt_dir = torch.hub.get_dir()
         self.__get_model(
-            model_name=model_name, use_pca=use_pca, use_activation=use_activation
+            model_name=model_name,
+            use_pca=use_pca,
+            use_activation=use_activation,
         )
 
-    def __get_model(self, model_name="vggish", use_pca=False, use_activation=False):
+    def __get_model(
+        self, model_name="vggish", use_pca=False, use_activation=False
+    ):
         """
         Get ckpt and set model for the specified model_name
 
@@ -177,7 +197,9 @@ class FrechetAudioDistance:
             if not (os.path.exists(model_path)):
                 if self.verbose:
                     print(
-                        "[Frechet Audio Distance] Downloading {}...".format(model_path)
+                        "[Frechet Audio Distance] Downloading {}...".format(
+                            model_path
+                        )
                     )
                 torch.hub.download_url_to_file(
                     url=f"https://zenodo.org/record/3987831/files/{download_name}",
@@ -213,7 +235,9 @@ class FrechetAudioDistance:
             if not (os.path.exists(model_path)):
                 if self.verbose:
                     print(
-                        "[Frechet Audio Distance] Downloading {}...".format(model_path)
+                        "[Frechet Audio Distance] Downloading {}...".format(
+                            model_path
+                        )
                     )
                 torch.hub.download_url_to_file(
                     url=f"https://huggingface.co/lukewys/laion_clap/resolve/main/{download_name}",
@@ -282,7 +306,12 @@ class FrechetAudioDistance:
                     embd = self.model.forward(audio, sr)
                 elif self.model_name == "pann":
                     with torch.no_grad():
-                        audio = torch.tensor(audio).float().unsqueeze(0).to(self.device)
+                        audio = (
+                            torch.tensor(audio)
+                            .float()
+                            .unsqueeze(0)
+                            .to(self.device)
+                        )
                         out = self.model(audio, None)
                         embd = out["embedding"].data[0]
                 elif self.model_name == "clap":
@@ -382,17 +411,19 @@ class FrechetAudioDistance:
         sigma1 = np.atleast_2d(sigma1)
         sigma2 = np.atleast_2d(sigma2)
 
-        assert mu1.shape == mu2.shape, (
-            "Training and test mean vectors have different lengths"
-        )
-        assert sigma1.shape == sigma2.shape, (
-            "Training and test covariances have different dimensions"
-        )
+        assert (
+            mu1.shape == mu2.shape
+        ), "Training and test mean vectors have different lengths"
+        assert (
+            sigma1.shape == sigma2.shape
+        ), "Training and test covariances have different dimensions"
 
         diff = mu1 - mu2
 
         # Product might be almost singular
-        covmean, _ = linalg.sqrtm(sigma1.dot(sigma2).astype(complex), disp=False)
+        covmean, _ = linalg.sqrtm(
+            sigma1.dot(sigma2).astype(complex), disp=False
+        )
         if not np.isfinite(covmean).all():
             msg = (
                 "fid calculation produces singular product; "
@@ -413,61 +444,107 @@ class FrechetAudioDistance:
 
         tr_covmean = np.trace(covmean)
 
-        return diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
+        return (
+            diff.dot(diff)
+            + np.trace(sigma1)
+            + np.trace(sigma2)
+            - 2 * tr_covmean
+        )
 
     def __load_audio_files(self, dir=None, paths=None, dtype="float32"):
         task_results = []
 
-        pool = ThreadPool(self.audio_load_worker)
-
         if paths is None:
-            pbar = tqdm(total=len(os.listdir(dir)), disable=(not self.verbose))
 
-            def update(*a):
-                pbar.update()
-
-            if self.verbose:
-                print("[Frechet Audio Distance] Loading audio from {}...".format(dir))
-            for fname in os.listdir(dir):
-                res = pool.apply_async(
-                    load_audio_task,
-                    args=(
-                        os.path.join(dir, fname),
-                        self.sample_rate,
-                        self.channels,
-                        dtype,
-                    ),
-                    callback=update,
+            # pool = ThreadPool(self.audio_load_worker)
+            with Pool(processes=self.audio_load_worker) as pool:
+                pbar = tqdm(
+                    total=len(os.listdir(dir)), disable=(not self.verbose)
                 )
-                task_results.append(res)
-            pool.close()
-            pool.join()
+
+                def update(*a):
+                    pbar.update()
+
+                if self.verbose:
+                    print(
+                        "[Frechet Audio Distance] Loading audio from {}...".format(
+                            dir
+                        )
+                    )
+                for fname in os.listdir(dir):
+                    res = pool.apply_async(
+                        load_audio_task,
+                        args=(
+                            os.path.join(dir, fname),
+                            self.sample_rate,
+                            self.channels,
+                            dtype,
+                        ),
+                        callback=update,
+                    )
+                    task_results.append(res)
+                pool.close()
+                pool.join()
 
             return [k.get() for k in task_results]
         else:
-            pbar = tqdm(total=len(paths), disable=(not self.verbose))
+            # pool = ThreadPool(self.audio_load_worker)
 
-            def update(*a):
-                pbar.update()
+            with Pool(processes=self.audio_load_worker) as pool:
 
-            if self.verbose:
-                print("[Frechet Audio Distance] Loading audio from provided paths")
-            for path in paths:
-                res = pool.apply_async(
-                    load_audio_task,
-                    args=(
-                        path,
-                        self.sample_rate,
-                        self.channels,
-                        dtype,
-                    ),
-                    callback=update,
-                )
-                task_results.append(res)
-            pool.close()
-            pool.join()
+                pbar = tqdm(total=len(paths), disable=(not self.verbose))
+
+                def update(*a):
+                    pbar.update()
+
+                if self.verbose:
+                    print(
+                        "[Frechet Audio Distance] Loading audio from provided paths"
+                    )
+                for path in paths:
+                    res = pool.apply_async(
+                        load_audio_task,
+                        args=(
+                            path,
+                            self.sample_rate,
+                            self.channels,
+                            dtype,
+                        ),
+                        callback=update,
+                    )
+                    task_results.append(res)
+                pool.close()
+                pool.join()
 
             return [k.get() for k in task_results]
+
+    def normalize_LUFS(
+        self,
+        x,
+        LUFS_level,
+        min_loudness=-70,
+    ):
+        """
+        Normalizes x based on LUFS.
+            x List[np.array]: Each np.array is shape (T,)
+            LUFS_level (float): level to normalize to, in dB.
+            min_loudness (float): minimum loudness, in dB.
+        """
+        x = np.stack(x)
+        x = torch.from_numpy(x).unsqueeze(-1)
+        meter = Meter(self.sample_rate)
+        GAIN_FACTOR = np.log(10) / 20
+
+        loudness = meter(x)
+
+        loudness = torch.maximum(
+            loudness, torch.ones_like(loudness) * min_loudness
+        )
+
+        gain = LUFS_level - loudness
+        gain = torch.exp(gain * GAIN_FACTOR)
+        x *= gain.reshape(-1, 1, 1)
+        return list(x.numpy())
 
     def score(
         self,
@@ -478,6 +555,7 @@ class FrechetAudioDistance:
         background_embds_path=None,
         eval_embds_path=None,
         normalize_rms_per_example=False,
+        LUFS_level=None,
         dtype="float32",
     ):
         """
@@ -491,11 +569,17 @@ class FrechetAudioDistance:
         - background_embds_path (str, optional): Path to save/load background audio embeddings (e.g., /folder/bkg_embs.npy). If None, embeddings won't be saved.
         - eval_embds_path (str, optional): Path to save/load evaluation audio embeddings (e.g., /folder/test_embs.npy). If None, embeddings won't be saved.
         - normalize_volume (bool): Normalize corresponding audio files.
+        - LUFS_level (float, optional): LUFS loudness level to normalize to, computed using descript's audio tools.
         - dtype (str, optional): Data type for loading audio. Default is "float32".
 
         Returns:
         - float: The Frechet Audio Distance (FAD) score between the two directories of audio files.
         """
+
+        assert not (
+            normalize_rms_per_example and LUFS_level is not None
+        ), "Either Normalize by LUFS or per-example RMS"
+
         try:
             # Load or compute background embeddings
             if background_embds_path is not None and os.path.exists(
@@ -517,14 +601,22 @@ class FrechetAudioDistance:
                     )
 
                 if normalize_rms_per_example:
-                    background_rms = [np.sqrt(np.mean(x**2)) for x in audio_background]
-                # print(audio_background[0].shape)
+                    background_rms = [
+                        np.sqrt(np.mean(x**2)) for x in audio_background
+                    ]
+                if LUFS_level is not None:
+                    audio_background = self.normalize_LUFS(
+                        audio_background, LUFS_level
+                    )
 
                 embds_background = self.get_embeddings(
                     audio_background, sr=self.sample_rate
                 )
+
                 if background_embds_path:
-                    os.makedirs(os.path.dirname(background_embds_path), exist_ok=True)
+                    os.makedirs(
+                        os.path.dirname(background_embds_path), exist_ok=True
+                    )
                     np.save(background_embds_path, embds_background)
 
             # Load or compute eval embeddings
@@ -536,18 +628,28 @@ class FrechetAudioDistance:
                 embds_eval = np.load(eval_embds_path)
             else:
                 if background_paths is None:
-                    audio_eval = self.__load_audio_files(dir=eval_dir, dtype=dtype)
+                    audio_eval = self.__load_audio_files(
+                        dir=eval_dir, dtype=dtype
+                    )
                 else:
-                    audio_eval = self.__load_audio_files(paths=eval_paths, dtype=dtype)
+                    audio_eval = self.__load_audio_files(
+                        paths=eval_paths, dtype=dtype
+                    )
 
                 if normalize_rms_per_example:
                     eval_rms = [np.sqrt(np.mean(x**2)) for x in audio_eval]
                     audio_eval = [
-                        (background_rms[i] / (eval_rms[i] + 1e-8)) * audio_eval[i]
+                        (background_rms[i] / (eval_rms[i] + 1e-8))
+                        * audio_eval[i]
                         for i in range(len(eval_rms))
                     ]
 
-                embds_eval = self.get_embeddings(audio_eval, sr=self.sample_rate)
+                if LUFS_level is not None:
+                    audio_eval = self.normalize_LUFS(audio_eval, LUFS_level)
+
+                embds_eval = self.get_embeddings(
+                    audio_eval, sr=self.sample_rate
+                )
                 if eval_embds_path:
                     os.makedirs(os.path.dirname(eval_embds_path), exist_ok=True)
                     np.save(eval_embds_path, embds_eval)
@@ -559,7 +661,9 @@ class FrechetAudioDistance:
                 )
                 return -1
             if len(embds_eval) == 0:
-                print("[Frechet Audio Distance] eval set dir is empty, exiting...")
+                print(
+                    "[Frechet Audio Distance] eval set dir is empty, exiting..."
+                )
                 return -1
 
             # Compute statistics and FAD score
